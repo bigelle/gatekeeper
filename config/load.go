@@ -2,6 +2,11 @@ package config
 
 import "github.com/spf13/viper"
 
+// Predefined field types
+const (
+	CustomStringFieldType string = "custom_string"
+)
+
 type Config struct {
 	Db *Database `mapstructure:"db"`
 }
