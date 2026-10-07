@@ -22,9 +22,9 @@ db:
   user:
     custom_fields:
       - name: username
-        type: string
+        type: custom_string
       - name: email
-        type: string
+        type: custom_string
 `
 
 	n, err := file.WriteString(yaml)
@@ -43,8 +43,8 @@ db:
 		Db: &Database{
 			User: &User{
 				CustomFields: []CustomField{
-					{Name: "username", Type: "string"},
-					{Name: "email", Type: "string"},
+					{Name: "username", Type: "custom_string"},
+					{Name: "email", Type: "custom_string"},
 				},
 			},
 		},
