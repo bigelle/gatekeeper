@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"ariga.io/atlas/sql/migrate"
 	ps "ariga.io/atlas/sql/postgres"
 	"ariga.io/atlas/sql/schema"
 	_ "github.com/lib/pq"
@@ -60,27 +59,16 @@ func initDB(ctx context.Context) (*postgres.PostgresContainer, *sql.DB, error) {
 	return pgContainer, db, nil
 }
 
-func runMigration(ctx context.Context, driver migrate.Driver, sc *schema.Schema) error {
-	empty, err := driver.InspectSchema(ctx, "public", nil)
-	if err != nil {
-		return err
-	}
-
-	diff, err := driver.SchemaDiff(empty, sc)
-	if err != nil {
-		return err
-	}
-
-	return driver.ApplyChanges(ctx, diff)
-}
-
 func checkColumns(t *testing.T, db *sql.DB, cols ...string) {
 	require.NotNil(t, cols)
 
-	var exists bool
+	var (
+		exists bool
+		err    error
+	)
 
 	for _, col := range cols {
-		err := db.QueryRowContext(t.Context(), queryCol, col).Scan(&exists)
+		err = db.QueryRowContext(t.Context(), queryCol, col).Scan(&exists)
 		require.NoError(t, err)
 		assert.True(t, exists)
 	}
@@ -97,21 +85,17 @@ func queryColumnCount(ctx context.Context, db *sql.DB) (int, error) {
 }
 
 func TestMigrate(t *testing.T) {
-	// PREREQUISITES
-	// 1. schema
-
+	// PREPARE
 	ctx := t.Context()
 
-	// 2. db
 	pg, db, err := initDB(ctx)
 	require.NoError(t, err)
 	defer pg.Terminate(ctx)
 
-	// 3. atlas driver
 	driver, err := ps.Open(db)
 	require.NoError(t, err)
 
-	// TESTING
+	// TEST
 	t.Run("Creating a new table from scratch", func(t *testing.T) {
 		table := schema.NewTable("users").AddColumns(
 			schema.NewColumn("id").SetType(&schema.UUIDType{T: "uuid"}),
@@ -119,8 +103,7 @@ func TestMigrate(t *testing.T) {
 			schema.NewColumn("updated_at").SetType(&schema.TimeType{T: "timestamptz"}),
 			schema.NewColumn("deleted_at").SetType(&schema.TimeType{T: "timestamptz"}),
 		)
-		sc := schema.New("public").AddTables(table)
-		err = runMigration(ctx, driver, sc)
+		err = Migrate(ctx, driver, table)
 		require.NoError(t, err)
 
 		cols := []string{"id", "created_at", "updated_at", "deleted_at"}
@@ -131,6 +114,7 @@ func TestMigrate(t *testing.T) {
 		assert.Equal(t, len(cols), n)
 	})
 
+	// SKIP ON FAIL
 	if t.Failed() {
 		t.Skip("Failed basic functionality test, skipping")
 	}
@@ -138,6 +122,7 @@ func TestMigrate(t *testing.T) {
 	// Storing how many columns in table
 	var N int
 
+	// TEST
 	t.Run("Applying new columns", func(t *testing.T) {
 		table := schema.NewTable("users").AddColumns(
 			schema.NewColumn("id").SetType(&schema.UUIDType{T: "uuid"}),
@@ -147,13 +132,13 @@ func TestMigrate(t *testing.T) {
 			schema.NewColumn("username").SetType(&schema.StringType{T: "character varying", Size: 255}),
 			schema.NewColumn("email").SetType(&schema.StringType{T: "character varying", Size: 255}),
 		)
-		newSc := schema.New("public").AddTables(table)
 
-		err = runMigration(ctx, driver, newSc)
+		err = Migrate(ctx, driver, table)
 		require.NoError(t, err)
 
 		cols := []string{"id", "created_at", "updated_at", "deleted_at", "username", "email"}
 		checkColumns(t, db, cols...)
+
 		n, err := queryColumnCount(ctx, db)
 		require.NoError(t, err)
 		assert.Equal(t, len(cols), n)
@@ -161,10 +146,12 @@ func TestMigrate(t *testing.T) {
 		N = n
 	})
 
+	// SKIP ON FAIL
 	if t.Failed() {
 		t.Skip("Didn't apply new columns, skipping")
 	}
 
+	// TEST
 	t.Run("Idempotency check", func(t *testing.T) {
 		table := schema.NewTable("users").AddColumns(
 			schema.NewColumn("id").SetType(&schema.UUIDType{T: "uuid"}),
@@ -174,13 +161,36 @@ func TestMigrate(t *testing.T) {
 			schema.NewColumn("username").SetType(&schema.StringType{T: "character varying", Size: 255}),
 			schema.NewColumn("email").SetType(&schema.StringType{T: "character varying", Size: 255}),
 		)
-		newSc := schema.New("public").AddTables(table)
 
-		err = runMigration(ctx, driver, newSc)
+		err = Migrate(ctx, driver, table)
 		require.NoError(t, err)
 
 		cols := []string{"id", "created_at", "updated_at", "deleted_at", "username", "email"}
 		checkColumns(t, db, cols...)
+
+		n, err := queryColumnCount(ctx, db)
+		require.NoError(t, err)
+		assert.Equal(t, len(cols), n)
+
+		assert.Equal(t, N, n)
+	})
+
+	// TEST
+	t.Run("Remove columns from the schema", func(t *testing.T) {
+		table := schema.NewTable("users").AddColumns(
+			schema.NewColumn("id").SetType(&schema.UUIDType{T: "uuid"}),
+			schema.NewColumn("created_at").SetType(&schema.TimeType{T: "timestamptz"}),
+			schema.NewColumn("updated_at").SetType(&schema.TimeType{T: "timestamptz"}),
+			schema.NewColumn("deleted_at").SetType(&schema.TimeType{T: "timestamptz"}),
+			schema.NewColumn("username").SetType(&schema.StringType{T: "character varying", Size: 255}),
+		)
+
+		err = Migrate(ctx, driver, table)
+		require.NoError(t, err)
+
+		cols := []string{"id", "created_at", "updated_at", "deleted_at", "username", "email"}
+		checkColumns(t, db, cols...)
+
 		n, err := queryColumnCount(ctx, db)
 		require.NoError(t, err)
 		assert.Equal(t, len(cols), n)
