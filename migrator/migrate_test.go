@@ -7,7 +7,6 @@ import (
 	"time"
 
 	ps "ariga.io/atlas/sql/postgres"
-	"ariga.io/atlas/sql/schema"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,12 +96,14 @@ func TestMigrate(t *testing.T) {
 
 	// TEST
 	t.Run("Creating a new table from scratch", func(t *testing.T) {
-		table := schema.NewTable("users").AddColumns(
-			schema.NewColumn("id").SetType(&schema.UUIDType{T: "uuid"}),
-			schema.NewColumn("created_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("updated_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("deleted_at").SetType(&schema.TimeType{T: "timestamptz"}),
-		)
+		table := &Table{
+			Columns: []*Column{
+				{Name: "id", Type: UuidDataType},
+				{Name: "created_at", Type: TimestampTimeZoneDataType},
+				{Name: "updated_at", Type: TimestampTimeZoneDataType},
+				{Name: "deleted_at", Type: TimestampTimeZoneDataType},
+			},
+		}
 		err = Migrate(ctx, driver, table)
 		require.NoError(t, err)
 
@@ -124,14 +125,16 @@ func TestMigrate(t *testing.T) {
 
 	// TEST
 	t.Run("Applying new columns", func(t *testing.T) {
-		table := schema.NewTable("users").AddColumns(
-			schema.NewColumn("id").SetType(&schema.UUIDType{T: "uuid"}),
-			schema.NewColumn("created_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("updated_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("deleted_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("username").SetType(&schema.StringType{T: "character varying", Size: 255}),
-			schema.NewColumn("email").SetType(&schema.StringType{T: "character varying", Size: 255}),
-		)
+		table := &Table{
+			Columns: []*Column{
+				{Name: "id", Type: UuidDataType},
+				{Name: "created_at", Type: TimestampTimeZoneDataType},
+				{Name: "updated_at", Type: TimestampTimeZoneDataType},
+				{Name: "deleted_at", Type: TimestampTimeZoneDataType},
+				{Name: "username", Type: VarCharDataType},
+				{Name: "email", Type: VarCharDataType},
+			},
+		}
 
 		err = Migrate(ctx, driver, table)
 		require.NoError(t, err)
@@ -153,14 +156,16 @@ func TestMigrate(t *testing.T) {
 
 	// TEST
 	t.Run("Idempotency check", func(t *testing.T) {
-		table := schema.NewTable("users").AddColumns(
-			schema.NewColumn("id").SetType(&schema.UUIDType{T: "uuid"}),
-			schema.NewColumn("created_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("updated_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("deleted_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("username").SetType(&schema.StringType{T: "character varying", Size: 255}),
-			schema.NewColumn("email").SetType(&schema.StringType{T: "character varying", Size: 255}),
-		)
+		table := &Table{
+			Columns: []*Column{
+				{Name: "id", Type: UuidDataType},
+				{Name: "created_at", Type: TimestampTimeZoneDataType},
+				{Name: "updated_at", Type: TimestampTimeZoneDataType},
+				{Name: "deleted_at", Type: TimestampTimeZoneDataType},
+				{Name: "username", Type: VarCharDataType},
+				{Name: "email", Type: VarCharDataType},
+			},
+		}
 
 		err = Migrate(ctx, driver, table)
 		require.NoError(t, err)
@@ -177,13 +182,15 @@ func TestMigrate(t *testing.T) {
 
 	// TEST
 	t.Run("Remove columns from the schema", func(t *testing.T) {
-		table := schema.NewTable("users").AddColumns(
-			schema.NewColumn("id").SetType(&schema.UUIDType{T: "uuid"}),
-			schema.NewColumn("created_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("updated_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("deleted_at").SetType(&schema.TimeType{T: "timestamptz"}),
-			schema.NewColumn("username").SetType(&schema.StringType{T: "character varying", Size: 255}),
-		)
+		table := &Table{
+			Columns: []*Column{
+				{Name: "id", Type: UuidDataType},
+				{Name: "created_at", Type: TimestampTimeZoneDataType},
+				{Name: "updated_at", Type: TimestampTimeZoneDataType},
+				{Name: "deleted_at", Type: TimestampTimeZoneDataType},
+				{Name: "username", Type: VarCharDataType},
+			},
+		}
 
 		err = Migrate(ctx, driver, table)
 		require.NoError(t, err)
