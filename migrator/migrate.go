@@ -9,6 +9,10 @@ import (
 )
 
 func Migrate(ctx context.Context, driver migrate.Driver, t *Table) error {
+	return atlasMigrate(ctx, driver, t)
+}
+
+func atlasMigrate(ctx context.Context, driver migrate.Driver, t *Table) error {
 	atl := mapToAtlasTable(t)
 
 	current, err := driver.InspectSchema(ctx, "public", nil)

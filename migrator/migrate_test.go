@@ -4,15 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"testing"
-	"time"
 
 	ps "ariga.io/atlas/sql/postgres"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 var queryCol = `
@@ -29,34 +25,6 @@ FROM information_schema.columns
 WHERE table_schema = 'public' 
   AND table_name = 'users'
 `
-
-func initDB(ctx context.Context) (*postgres.PostgresContainer, *sql.DB, error) {
-	pgContainer, err := postgres.Run(ctx,
-		"postgres:15-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("postgres"),
-		postgres.WithPassword("secret"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(5*time.Second)),
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return pgContainer, db, nil
-}
 
 func checkColumns(t *testing.T, db *sql.DB, cols ...string) {
 	require.NotNil(t, cols)
@@ -87,9 +55,8 @@ func TestMigrate(t *testing.T) {
 	// PREPARE
 	ctx := t.Context()
 
-	pg, db, err := initDB(ctx)
+	db, err := sql.Open("postgres", connStr)
 	require.NoError(t, err)
-	defer pg.Terminate(ctx)
 
 	driver, err := ps.Open(db)
 	require.NoError(t, err)
