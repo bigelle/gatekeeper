@@ -3,7 +3,6 @@ package migrator
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -116,8 +115,6 @@ func findMissing(in, from []string) []string {
 	return diff
 }
 
-var safeNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9_]{1,64}$`)
-
 func (m *postgresMigrator) addColumns(tx pgx.Tx, cols []*Column) error {
 	b := strings.Builder{}
 	b.WriteString("ALTER TABLE users ")
@@ -125,11 +122,9 @@ func (m *postgresMigrator) addColumns(tx pgx.Tx, cols []*Column) error {
 	var rows []string
 
 	for _, col := range cols {
-		if !safeNameRegexp.MatchString(col.Name) {
-			return fmt.Errorf("invalid column name: %s", col.Name)
-		}
-
-		row := fmt.Sprintf("ADD COLUMN IF NOT EXISTS %s %s", col.Name, col.Type)
+		colname := pgx.Identifier{col.Name}.Sanitize()
+		coltype := pgx.Identifier{string(col.Type)}.Sanitize()
+		row := fmt.Sprintf("ADD COLUMN IF NOT EXISTS %s %s", colname, coltype)
 		rows = append(rows, row)
 	}
 
@@ -147,16 +142,15 @@ func (m *postgresMigrator) addColumns(tx pgx.Tx, cols []*Column) error {
 
 func (m *postgresMigrator) addIndexes(tx pgx.Tx, idx []*Index) error {
 	for _, i := range idx {
-		if !safeNameRegexp.MatchString(i.Name) {
-			return fmt.Errorf("invalid column name: %s", i.Name)
-		}
-
 		name := "idx_users_" + i.Name
 		if i.Unique {
 			name += "_unique"
 		}
 
-		q := fmt.Sprintf("CREATE INDEX %s ON users (%s);", name, i.Name)
+		name = pgx.Identifier{name}.Sanitize()
+		colname := pgx.Identifier{i.Name}.Sanitize()
+
+		q := fmt.Sprintf("CREATE INDEX %s ON users (%s);", name, colname)
 
 		_, err := tx.Exec(m.ctx, q)
 		if err != nil {
