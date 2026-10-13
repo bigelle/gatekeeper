@@ -23,8 +23,10 @@ db:
     custom_fields:
       - name: username
         type: custom_string
+        unique: true
       - name: email
         type: custom_string
+        index: true
 `
 
 	n, err := file.WriteString(yaml)
@@ -43,8 +45,8 @@ db:
 		Db: &Database{
 			User: &User{
 				CustomFields: []CustomField{
-					{Name: "username", Type: "custom_string"},
-					{Name: "email", Type: "custom_string"},
+					{Name: "username", Type: "custom_string", GenericColumnOptions: GenericColumnOptions{Unique: true}},
+					{Name: "email", Type: "custom_string", GenericColumnOptions: GenericColumnOptions{Index: true}},
 				},
 			},
 		},

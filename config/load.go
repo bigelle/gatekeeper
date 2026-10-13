@@ -1,6 +1,9 @@
 package config
 
-import "github.com/spf13/viper"
+import (
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
 
 // Predefined field types
 const (
@@ -44,7 +47,9 @@ func LoadConfig(paths ...string) (*Config, error) {
 	}
 
 	var c Config
-	if err := v.Unmarshal(&c); err != nil {
+	if err := v.Unmarshal(&c, func(dc *mapstructure.DecoderConfig) {
+		dc.Squash = true
+	}); err != nil {
 		return nil, err
 	}
 
