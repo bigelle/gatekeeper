@@ -10,7 +10,10 @@ import (
 
 func TestMakingSchemaFromConfig(t *testing.T) {
 	extras := []*config.CustomField{
-		{Name: "email", Type: config.CustomStringFieldType},
+		{
+			Name: "email",
+			Type: config.CustomStringFieldType,
+		},
 	}
 
 	table, err := NewUsersTable(extras...)

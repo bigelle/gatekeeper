@@ -3,7 +3,6 @@ package migrator
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -28,48 +27,66 @@ AND table_name = 'users'
 ;
 `
 
-func postgresMigrate(ctx context.Context, db *pgx.Conn, t *Table) error {
-	tx, err := db.Begin(ctx)
+type postgresMigrator struct {
+	// migration is a whole one procedure
+	// so the single context is used for the whole proccess
+	ctx  context.Context
+	conn *pgx.Conn
+}
+
+func newPostgresMigrator(ctx context.Context, conn *pgx.Conn) *postgresMigrator {
+	return &postgresMigrator{
+		ctx:  ctx,
+		conn: conn,
+	}
+}
+
+func (m *postgresMigrator) migrate(t *Table) error {
+	tx, err := m.conn.Begin(m.ctx)
 	if err != nil {
 		return err
 	}
 
 	// 1. create table if not exists
-	if err := createTable(ctx, tx); err != nil {
-		tx.Rollback(ctx)
+	if err := m.createTable(tx); err != nil {
+		tx.Rollback(m.ctx)
 		return err
 	}
 
 	// 2. in case the table already existed, make sure it has required columns
-	if err := assertDefaultColumns(ctx, tx); err != nil {
-		tx.Rollback(ctx)
+	if err := m.assertDefaultColumns(tx); err != nil {
+		tx.Rollback(m.ctx)
 		return err
 	}
 
-	// 3. add columns
-	if err := addColumns(ctx, tx, t.Columns); err != nil {
-		tx.Rollback(ctx)
+	// 3. add extra columns
+	if err := m.addColumns(tx, t.Columns); err != nil {
+		tx.Rollback(m.ctx)
 		return err
 	}
 
 	// 4. add indexes
+	if err := m.addIndexes(tx, t.Indexes); err != nil {
+		tx.Rollback(m.ctx)
+		return err
+	}
 
 	// 5. add constraints
 
 	// done
-	return tx.Commit(ctx)
+	return tx.Commit(m.ctx)
 }
 
-func createTable(ctx context.Context, tx pgx.Tx) error {
-	_, err := tx.Exec(ctx, _PGX_CREATE_USERS_TABLE_REQUEST)
+func (m *postgresMigrator) createTable(tx pgx.Tx) error {
+	_, err := tx.Exec(m.ctx, _PGX_CREATE_USERS_TABLE_REQUEST)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func assertDefaultColumns(ctx context.Context, tx pgx.Tx) error {
-	rows, err := tx.Query(ctx, _PGX_SELECT_COLUMN_NAMES_REQUEST)
+func (m *postgresMigrator) assertDefaultColumns(tx pgx.Tx) error {
+	rows, err := tx.Query(m.ctx, _PGX_SELECT_COLUMN_NAMES_REQUEST)
 	if err != nil {
 		return err
 	}
@@ -87,10 +104,11 @@ func assertDefaultColumns(ctx context.Context, tx pgx.Tx) error {
 	return nil
 }
 
-func findMissing(src, target []string) []string {
+// findMissing returns what strings are missing in "in" from "from"
+func findMissing(in, from []string) []string {
 	var diff []string
-	for _, t := range target {
-		if !slices.Contains(src, t) {
+	for _, t := range from {
+		if !slices.Contains(in, t) {
 			diff = append(diff, t)
 		}
 	}
@@ -98,16 +116,16 @@ func findMissing(src, target []string) []string {
 	return diff
 }
 
-var colNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]{1,64}$`)
+var safeNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9_]{1,64}$`)
 
-func addColumns(ctx context.Context, tx pgx.Tx, cols []*Column) error {
+func (m *postgresMigrator) addColumns(tx pgx.Tx, cols []*Column) error {
 	b := strings.Builder{}
 	b.WriteString("ALTER TABLE users ")
 
 	var rows []string
 
 	for _, col := range cols {
-		if !colNameRegex.MatchString(col.Name) {
+		if !safeNameRegexp.MatchString(col.Name) {
 			return fmt.Errorf("invalid column name: %s", col.Name)
 		}
 
@@ -119,9 +137,31 @@ func addColumns(ctx context.Context, tx pgx.Tx, cols []*Column) error {
 
 	b.WriteRune(';')
 
-	_, err := tx.Exec(ctx, b.String())
+	_, err := tx.Exec(m.ctx, b.String())
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (m *postgresMigrator) addIndexes(tx pgx.Tx, idx []*Index) error {
+	for _, i := range idx {
+		if !safeNameRegexp.MatchString(i.Name) {
+			return fmt.Errorf("invalid column name: %s", i.Name)
+		}
+
+		name := "idx_users_" + i.Name
+		if i.Unique {
+			name += "_unique"
+		}
+
+		q := fmt.Sprintf("CREATE INDEX %s ON users (%s);", name, i.Name)
+
+		_, err := tx.Exec(m.ctx, q)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

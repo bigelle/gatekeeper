@@ -1,20 +1,19 @@
 package migrator
 
 import (
-	"database/sql"
 	"testing"
 
-	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const queryTableCols = `
-SELECT
-FROM information_schema.columns 
-WHERE table_schema = 'public' 
-  AND table_name = 'users'
+const queryTableIndexes = `
+SELECT indexname
+FROM pg_indexes
+WHERE schemaname = 'public' 
+AND tablename = 'users';
 `
 
 func Test_postgresMigrate(t *testing.T) {
@@ -24,35 +23,41 @@ func Test_postgresMigrate(t *testing.T) {
 			{Name: "email", Type: VarCharDataType},
 			{Name: "username", Type: VarCharDataType},
 		},
+		Indexes: []*Index{
+			{Name: "email", Unique: false},
+			{Name: "username", Unique: true},
+		},
 	}
+	ctx := t.Context()
 
-	db, err := sql.Open("pgx", connStr)
+	conn, err := pgx.Connect(ctx, connStr)
 	require.NoError(t, err)
 
-	conn, err := db.Conn(t.Context())
-	require.NoError(t, err)
+	m := newPostgresMigrator(ctx, conn)
 
 	// RUN
-	err = conn.Raw(func(driverConn any) error {
-		conn := driverConn.(*stdlib.Conn).Conn()
-
-		return postgresMigrate(t.Context(), conn, &table)
-	})
+	err = m.migrate(&table)
 	require.NoError(t, err)
 
-	//TEST
-	rows, err := db.Query(queryTableCols)
-	require.NoError(t, err)
-	defer rows.Close()
-
-	var cols []string
-	for rows.Next() {
-		var col string
-		rows.Scan(&col)
-		cols = append(cols, col)
-	}
-	err = rows.Err()
+	//TEST for columns
+	rows, err := conn.Query(ctx, _PGX_SELECT_COLUMN_NAMES_REQUEST)
 	require.NoError(t, err)
 
-	assert.Equal(t, 6, len(cols))
+	colsHave, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+
+	colsExpect := []string{"id", "created_at", "updated_at", "deleted_at", "username", "email"}
+	diff := findMissing(colsHave, colsExpect)
+	assert.Empty(t, diff)
+
+	// TEST for indexes
+	rows, err = conn.Query(ctx, queryTableIndexes)
+	require.NoError(t, err)
+
+	indexHave, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+
+	indexExpect := []string{"idx_users_email", "idx_users_username_unique"}
+	diff = findMissing(indexHave, indexExpect)
+	assert.Empty(t, diff)
 }

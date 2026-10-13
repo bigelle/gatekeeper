@@ -22,6 +22,12 @@ type User struct {
 type CustomField struct {
 	Name string `mapstructure:"name"`
 	Type string `mapstructure:"type"`
+	GenericColumnOptions
+}
+
+type GenericColumnOptions struct {
+	Index  bool `mapstructure:"index"`
+	Unique bool `mapstructure:"unique"`
 }
 
 func LoadConfig(paths ...string) (*Config, error) {
